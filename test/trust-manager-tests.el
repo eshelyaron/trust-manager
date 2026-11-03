@@ -253,6 +253,33 @@
       (trust-manager-mode -1)
       (ignore-errors (delete-directory d t)))))
 
+(ert-deftest trust-manager-tests--byte-compile-file-shorthands ()
+  "`byte-compile-file' honors `read-symbol-shorthands' in trusted files."
+  (let* ((d (make-temp-file "trust-mgr-test" t))
+         (f (expand-file-name "foo.el" d))
+         (sym 'trust-manager-tests--sh-func))
+    (unwind-protect
+        (let* ((trusted-content (list (abbreviate-file-name
+                                       (file-name-as-directory d))))
+               (trust-manager-trust-alist nil)
+               (user-init-file nil)
+               (trust-manager-secure-additional-features '(file-local-variables))
+               (inhibit-message t))
+          (with-temp-file f
+            (insert ";; -*- lexical-binding: t; -*-\n\n"
+                    "(defun tmt-sh-func () 42)\n\n"
+                    ";; Local Variables\:\n"
+                    ";; read-symbol-shorthands: ((\"tmt-\" . \"trust-manager-tests--\"))\n"
+                    ";; End\:\n"))
+          (trust-manager-mode)
+          (should (byte-compile-file f))
+          (load (byte-compile-dest-file f) nil t)
+          (should (fboundp sym))
+          (should-not (fboundp (intern-soft "tmt-sh-func"))))
+      (trust-manager-mode -1)
+      (fmakunbound sym)
+      (ignore-errors (delete-directory d t)))))
+
 (ert-deftest trust-manager-tests--safe-local-variable-directories-trusted ()
   (let* ((d (make-temp-file "trust-mgr-test" t))
          (d/ (file-name-as-directory d)))

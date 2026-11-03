@@ -463,7 +463,20 @@ https://yhetil.org/emacs/jwv4ihscare.fsf-monnier+emacs@gnu.org/
 Argument RESPECT-E-L-V non-nil tells `normal-mode' to respect
 `enable-local-variables'; if the buffer is untrusted, unconditionally
 override RESPECT-E-L-V with non-nil."
-  (let* ((trust (trusted-content-p))
+  (let* ((trust (or
+                 ;; `byte-compile-file' performs compilation in a work
+                 ;; buffer, where it sets `buffer-file-name' but fails
+                 ;; to set `buffer-file-truename'.  So in that context
+                 ;; `trusted-content-p' is nil even for trusted files.
+                 ;; We work around that incoherence by always treating
+                 ;; the file being compiled as trusted, which is safe
+                 ;; because compiling a file already implies trust.
+                 ;; This is essential because we suppress symbol
+                 ;; shorthands in untrusted buffers, which would break
+                 ;; compilation.
+                 (and (bound-and-true-p byte-compile-current-file)
+                      (equal buffer-file-name byte-compile-current-file))
+                 (trusted-content-p)))
          (enable-local-variables (and trust enable-local-variables))
          (permanently-enabled-local-variables
           (if trust permanently-enabled-local-variables
