@@ -6,7 +6,7 @@
 ;; Maintainer: Eshel Yaron <me@eshelyaron.com>
 ;; Keywords: security trust files
 ;; URL: https://git.sr.ht/~eshel/trust-manager
-;; Package-Version: 0.4.2
+;; Package-Version: 0.4.3
 ;; Package-Requires: ((emacs "30.1"))
 
 ;; This program is free software; you can redistribute it and/or modify
