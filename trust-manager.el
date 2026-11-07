@@ -40,6 +40,21 @@
 ;; customize `trust-manager-trust-alist' to designate some directories
 ;; as trusted or untrusted before actually visiting files in them.
 ;;
+;; By default, `trust-manager-mode' saves your choices with Customize,
+;; in your `custom-file'.  If you'd rather keep them out of your
+;; `custom-file' (e.g. because you publish your Emacs configuration),
+;; set `trust-manager-save-trust-alist' to nil and persist
+;; `trust-manager-trust-alist' some other way.  For example, you can
+;; persist it with Savehist using the following configuration:
+;;
+;;   (setopt trust-manager-save-trust-alist nil)
+;;   (add-to-list 'savehist-additional-variables 'trust-manager-trust-alist)
+;;   (savehist-mode)
+;;   (trust-manager-mode)
+;;
+;; Note that this enables `savehist-mode' before `trust-manager-mode',
+;; so that `trust-manager-mode' applies the restored trust settings.
+;;
 ;; Another utility command is `trust-manager-set-project-trust', which
 ;; lets you mark any project as trusted or untrusted, not necessarily
 ;; the current project.  The command `trust-manager-set-file-trust' is
@@ -178,6 +193,12 @@ with `trust-manager-trust-alist'."
                   (expand-file-name (file-name-as-directory file))))
           (trust-manager--set-file-trust file trust))))))
 
+(defun trust-manager--set-trust-alist (symbol value)
+  "Set SYMBOL to VALUE and apply the trust values in VALUE.
+This is the `:set' function of `trust-manager-trust-alist'."
+  (trust-manager--set-files-trust value)
+  (set-default-toplevel-value symbol (sort value)))
+
 (defcustom trust-manager-trust-alist nil
   "Alist mapping file/directory names to boolean trust values.
 
@@ -188,14 +209,38 @@ This also happens when you customize this user option.
 
 If an entry in this alist says that some directory is trusted, then any
 other entry that specifies a file or subdirectory of the trusted
-directory is ignored, since it is already implicitly trusted as well."
+directory is ignored, since it is already implicitly trusted as well.
+
+When `trust-manager-mode' and related commands change this alist, they
+save the new value with Customize, unless you set the user option
+`trust-manager-save-trust-alist' to nil."
   :type '(alist :key-type (file :tag "File or Directory")
                 :value-type (boolean :tag "Is Trusted"))
   :risky t
   :package-version '(trust-manager . "0.1.0")
-  :set (lambda (symbol value)
-         (trust-manager--set-files-trust value)
-         (set-default-toplevel-value symbol (sort value))))
+  :set #'trust-manager--set-trust-alist)
+
+(defcustom trust-manager-save-trust-alist t
+  "Whether to save `trust-manager-trust-alist' with Customize.
+
+If this is non-nil (the default), then whenever `trust-manager-mode' or
+one of its associated commands change the value of
+`trust-manager-trust-alist', they save the new value in your
+`custom-file' via `customize-save-variable'.  If this option is nil,
+they only change the value in the current session, and it is up to you
+to persist it across sessions, if you want to."
+  :type 'boolean
+  :package-version '(trust-manager . "0.4.4"))
+
+(defun trust-manager--update-trust-alist (value)
+  "Set `trust-manager-trust-alist' to VALUE.
+Also save VALUE with Customize if `trust-manager-save-trust-alist' is
+non-nil."
+  (if trust-manager-save-trust-alist
+      (customize-save-variable 'trust-manager-trust-alist value)
+    ;; Don't use `customize-set-variable', since that would make
+    ;; `customize-save-customized' save VALUE in `custom-file'.
+    (trust-manager--set-trust-alist 'trust-manager-trust-alist value)))
 
 ;;;###autoload
 (defun trust-manager-customize ()
@@ -220,7 +265,7 @@ With a prefix argument, set TRUST to nil instead."
                                      (file-name-as-directory file)
                                    file)))))
     (setf (alist-get abbr trust-manager-trust-alist nil nil #'equal) trust)
-    (customize-save-variable 'trust-manager-trust-alist trust-manager-trust-alist)
+    (trust-manager--update-trust-alist trust-manager-trust-alist)
     (message "Marked `%s' as %strusted" abbr (if trust "" "un"))))
 
 ;;;###autoload
@@ -280,8 +325,7 @@ With a prefix argument, set TRUST to nil instead."
                (trust-manager--already-trusted-p pr))
         (let ((trust (funcall trust-manager--trust-query-function pr)))
           (trust-manager--set-file-trust pr trust)
-          (customize-save-variable
-           'trust-manager-trust-alist
+          (trust-manager--update-trust-alist
            `((,pr . ,trust) . ,trust-manager-trust-alist))
           (message "Marked project directory `%s' as %strusted"
                    pr (if trust "" "un")))))))
@@ -446,7 +490,7 @@ With a numeric prefix argument N, untrust the N files following point."
   "Remove trust setting for project ROOT from `trust-manager-trust-alist'."
   (setf (alist-get root trust-manager-trust-alist nil t #'equal) nil)
   (trust-manager--set-file-trust root nil)
-  (customize-save-variable 'trust-manager-trust-alist trust-manager-trust-alist))
+  (trust-manager--update-trust-alist trust-manager-trust-alist))
 
 (defun trust-manager--normal-mode-wrapper
     (fun &optional respect-e-l-v &rest _)
@@ -505,7 +549,7 @@ override RESPECT-E-L-V with non-nil."
 When you enable Trust Manager mode, it marks some standard files as
 trusted by adding them to `trusted-content', and sets up a hook that asks
 you whether you trust a project the first time you visit a file in that
-project.  Your answers are persisted in the `trust-manager-trust-alist'
+project.  Your answers are recorded in the `trust-manager-trust-alist'
 user option, which you may also customize directly.
 
 The standard files that this mode adds to `trusted-content' are your
